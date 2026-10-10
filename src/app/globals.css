@@ -1,0 +1,76 @@
+@import "tailwindcss";
+
+/* Design tokens — exact values from CLAUDE.md. One accent only: amber. */
+@theme {
+  --color-bg: #0b0f14;
+  --color-panel: #1a2129;
+  --color-panel-raised: #1f2730;
+  --color-border: #2c3642;
+  --color-accent: #c98a2b;
+  --color-accent-text: #f2c879;
+  --color-text: #e8ecf1;
+  --color-muted: #8a96a3;
+  --color-line: #3a4550;
+
+  --font-display: var(--font-space-grotesk), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html {
+  background: var(--color-bg);
+  /* Keep anchored sections clear of the fixed nav. */
+  scroll-padding-top: 4.5rem;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+}
+
+::selection {
+  background: var(--color-accent);
+  color: var(--color-bg);
+}
+
+:focus-visible {
+  outline: 1px solid var(--color-accent-text);
+  outline-offset: 3px;
+}
+
+/* Hero title and links fade up out of the dark on load. */
+@keyframes hero-fade {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.hero-fade {
+  animation: hero-fade 1.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero-fade {
+    animation: none;
+  }
+}
+
+/* Lenis recommended base styles. */
+html.lenis,
+html.lenis body {
+  height: auto;
+}
+.lenis:not(.lenis-autoToggle).lenis-stopped {
+  overflow: clip;
+}
+.lenis [data-lenis-prevent] {
+  overscroll-behavior: contain;
+}

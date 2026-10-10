@@ -1,0 +1,23 @@
+### The problem
+
+Everyone assumes world events move markets, but a dashboard that shows conflict headlines next to a stock chart proves nothing — the eye invents a pattern whether or not one exists. I wanted to build something that could answer the question properly: do geopolitical conflict events actually produce a measurable move in stock prices, or not? That means statistics, not a convincing-looking overlay.
+
+### The approach
+
+Vyomin pulls a live feed of machine-coded geopolitical events (GDELT) and market data, aligns events to stock returns on the correct trading calendar, and runs an event study: for each event it measures forward returns over fixed windows and tests whether they're more extreme than you'd expect by chance. Significance comes from a 10,000-iteration bootstrap rather than a t-test, because financial returns are famously non-normal and I didn't want to lean on an assumption the data doesn't support. Because the engine sweeps across dozens of event/country pairs, I apply a Bonferroni correction so that testing many combinations at once doesn't manufacture a false "signal."
+
+### The architecture
+
+The backend is Spring Boot behind a JWT + OAuth gate. Storage is deliberately split: PostgreSQL holds the analytical, time-series data (events, prices, returns) where set-based aggregation is the right tool, and Neo4j holds the relationship graph — country, event and actor nodes — where multi-hop traversal in SQL would mean recursive joins that degrade fast. Redis caches hot query results and is intentionally non-load-bearing: if it dies, requests just fall through to Postgres. The frontend is a React 3D globe and a force-directed intelligence graph, fed live over WebSocket/STOMP.
+
+<Architecture />
+
+### The challenges
+
+The hardest part wasn't making it run — it was making it *correct*. I caught and fixed two significance bugs before shipping, both of which made results look more significant than they were. The first was pseudo-replication: my real independent unit was an event, and there were only nine of them, but the data had fanned each event out into many rows, so the test counted 513 "independent" observations that weren't. The tell was that the p-values were implausibly tiny for such a noisy, small dataset; recomputing on the correct unit collapsed the false significance. The second was a saturation case — when event coverage neared 100%, the bootstrap had almost no "non-event" days left to compare against, so the null degenerated and produced false positives; I added a guardrail that refuses to report a verdict when coverage is pathologically high.
+
+Two engineering challenges stand out too. The ingestion of 4.35M GDELT records started as a 14–17 hour sequential backfill; a bounded worker pool brought it to 79 minutes, and I made it crash-safe with checkpointed resume — tested by killing the process mid-run and confirming it restarted from the last checkpoint with no duplicates, because the writes are idempotent upserts. And when Stooq began blocking automated traffic mid-build, moving to Yahoo Finance meant rewriting a single class, because I'd hidden the market-data source behind a swappable client interface from the start. Flight telemetry was part of the original scope, but live positions pushed Render's free tier past its 500MB memory limit, so I cut the feature rather than ship something that crashes in production.
+
+### The results
+
+Vyomin runs entirely on free-tier infrastructure: a concurrent ingestion pipeline, a dual-database backend, live streaming to a 3D frontend, and a statistical engine rigorous enough to catch its own errors. The event-study results are reported with Bonferroni-corrected significance thresholds, and the engine is honest about its limits — it distinguishes statistical from economic significance rather than overselling a finding. The two bugs are, oddly, the part I'm proudest of: catching them required understanding the statistics deeply enough to be suspicious of a good-looking result.
