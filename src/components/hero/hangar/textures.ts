@@ -2,7 +2,13 @@ import { CanvasTexture, RepeatWrapping, SRGBColorSpace } from "three";
 
 // Procedural textures generated once on the client: no image downloads for the atmosphere.
 
-let cache: { glow: CanvasTexture; shaft: CanvasTexture; haze: CanvasTexture } | null = null;
+let cache: {
+  glow: CanvasTexture;
+  shaft: CanvasTexture;
+  haze: CanvasTexture;
+  slit: CanvasTexture;
+  concrete: CanvasTexture;
+} | null = null;
 
 function canvas(size: number) {
   const c = document.createElement("canvas");
@@ -40,8 +46,26 @@ function shaft() {
   return c;
 }
 
-/** Tileable fractal value noise for drifting haze. */
-function hazeNoise() {
+/** The crack between the doors: soft vertical edges, an even core, soft top and bottom. */
+function slit() {
+  const [c, ctx] = canvas(128);
+  const img = ctx.createImageData(128, 128);
+  for (let y = 0; y < 128; y++) {
+    const v = (y - 63.5) / 63.5;
+    const along = 1 - Math.pow(Math.abs(v), 6);
+    for (let x = 0; x < 128; x++) {
+      const across = Math.exp(-Math.pow((x - 63.5) / 30, 2));
+      const i = (y * 128 + x) * 4;
+      img.data[i] = img.data[i + 1] = img.data[i + 2] = 255;
+      img.data[i + 3] = Math.round(255 * along * across);
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return c;
+}
+
+/** Tileable fractal value noise. A higher exponent gives sparser, wispier patches. */
+function hazeNoise(exponent = 1.8) {
   const size = 256;
   const [c, ctx] = canvas(size);
   const img = ctx.createImageData(size, size);
@@ -64,7 +88,7 @@ function hazeNoise() {
         total += amp;
         amp *= 0.5;
       });
-      v = Math.pow(v / total, 1.8);
+      v = Math.pow(v / total, exponent);
       const i = (y * size + x) * 4;
       img.data[i] = img.data[i + 1] = img.data[i + 2] = Math.round(255 * v);
       img.data[i + 3] = 255;
@@ -78,9 +102,25 @@ export function getTextures() {
   if (cache) return cache;
   const glow = new CanvasTexture(radialGlow());
   const shaftTex = new CanvasTexture(shaft());
-  const haze = new CanvasTexture(hazeNoise());
+  // Haze: high contrast, so it drifts as uneven wisps and patches rather than a uniform grey sheet.
+  const haze = new CanvasTexture(hazeNoise(3.2));
+  const slitTex = new CanvasTexture(slit());
   haze.wrapS = haze.wrapT = RepeatWrapping;
-  for (const t of [glow, shaftTex, haze]) t.colorSpace = SRGBColorSpace;
-  cache = { glow, shaft: shaftTex, haze };
+  for (const t of [glow, shaftTex, haze, slitTex]) t.colorSpace = SRGBColorSpace;
+  // Concrete roughness: the same noise, tiled, left linear (it's data, not colour). Remapped to a
+  // narrow 0.75–1 band (it multiplies the material roughness), so reflections break up like worn
+  // concrete without the floor ever looking wet.
+  const concreteCanvas = hazeNoise();
+  const ctx = concreteCanvas.getContext("2d")!;
+  const img = ctx.getImageData(0, 0, concreteCanvas.width, concreteCanvas.height);
+  for (let i = 0; i < img.data.length; i += 4) {
+    const v = Math.round(191 + img.data[i] * 0.25);
+    img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
+  }
+  ctx.putImageData(img, 0, 0);
+  const concrete = new CanvasTexture(concreteCanvas);
+  concrete.wrapS = concrete.wrapT = RepeatWrapping;
+  concrete.repeat.set(6, 10);
+  cache = { glow, shaft: shaftTex, haze, slit: slitTex, concrete };
   return cache;
 }

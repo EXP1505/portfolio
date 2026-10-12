@@ -3,7 +3,7 @@ import { Section } from "@/components/ui";
 
 export function About() {
   return (
-    <Section id="about" index="01" label="About" title="Correct, not just running.">
+    <Section id="about" index="01" label="About" title="Correct, not just running." surface>
       <div className="grid gap-12 md:grid-cols-[1fr_18rem] md:gap-20">
         <div className="max-w-2xl space-y-5 text-base leading-relaxed text-muted md:text-lg">
           {site.about.map((paragraph) => (

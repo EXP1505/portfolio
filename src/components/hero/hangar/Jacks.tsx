@@ -5,14 +5,22 @@ import { useGLTF } from "@react-three/drei";
 import { MeshStandardMaterial, Quaternion, Raycaster, Vector3, type Object3D } from "three";
 import { COLORS, FLOOR_Y, JACK_POINTS } from "./config";
 import { DRACO, MODEL } from "./Su57";
+import { getTextures } from "./textures";
 
 const UP = new Vector3(0, 1, 0);
 const LEG_COUNT = 3;
 const FOOT_RADIUS = 0.95;
 const HUB_Y = 0.55;
 
-// Shared by every jack part (this module only loads client-side, with the scene).
-const metal = new MeshStandardMaterial({ color: COLORS.jackMetal, metalness: 0.35, roughness: 0.75 });
+// Shared by every jack part (this module only loads client-side, with the scene). Worn, painted
+// workshop steel: rough, barely metallic, with blotchy roughness so highlights break up instead of
+// reading as smooth plastic.
+const metal = new MeshStandardMaterial({
+  color: COLORS.jackMetal,
+  metalness: 0.15,
+  roughness: 0.95,
+  roughnessMap: getTextures().concrete,
+});
 
 /** Tripod aircraft jack: splayed legs with foot pads, a hub, a thick column, screw collar and cap. */
 function AircraftJack({ x, z, height }: { x: number; z: number; height: number }) {
@@ -69,13 +77,17 @@ function AircraftJack({ x, z, height }: { x: number; z: number; height: number }
   );
 }
 
-/** Find where each jack meets the airframe by casting straight down onto the model. */
+/**
+ * Find where each jack meets the airframe by casting straight UP from the floor: the first hit is the
+ * underside. (Casting down from above hit the canopy first at the nose point, so the nose jack's
+ * column ran up through the fuselage and its cap sat on top of the canopy.)
+ */
 function useJackHeights(model: Object3D) {
   return useMemo(() => {
     model.updateMatrixWorld(true);
     const raycaster = new Raycaster();
     return JACK_POINTS.map(([x, z]) => {
-      raycaster.set(new Vector3(x, 10, z), new Vector3(0, -1, 0));
+      raycaster.set(new Vector3(x, FLOOR_Y, z), new Vector3(0, 1, 0));
       const hit = raycaster.intersectObject(model, true)[0];
       // Fall back to the belly height if the ray misses (shouldn't happen at these points).
       const skinY = hit ? hit.point.y : -0.82;

@@ -4,7 +4,7 @@ export function JetFallback() {
   return (
     <div
       aria-hidden
-      className="relative h-full w-full bg-[radial-gradient(ellipse_70%_45%_at_50%_60%,rgba(232,236,241,0.16),rgba(205,216,227,0.05)_45%,transparent_75%)]"
+      className="relative h-full w-full bg-[radial-gradient(ellipse_70%_45%_at_50%_60%,rgba(232,236,241,0.09),rgba(205,216,227,0.03)_40%,transparent_70%)]"
     >
       <svg
         viewBox="0 0 400 400"

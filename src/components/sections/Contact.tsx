@@ -19,7 +19,7 @@ export function Contact() {
 
 export function Footer() {
   return (
-    <footer className="border-t border-border">
+    <footer className="relative z-10 border-t border-border">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-2 px-4 py-8 font-mono text-[11px] tracking-wider text-muted sm:flex-row sm:justify-between sm:px-6">
         <p>
           © {site.footer.year} {site.name}

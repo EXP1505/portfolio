@@ -7,31 +7,49 @@ export function Section({
   index,
   label,
   title,
+  surface = false,
   children,
 }: {
   id: string;
   index: string;
   label: string;
   title?: string;
+  /** Sit the content on a dark, semi-transparent blurred panel (for scrolling over the scene backdrop). */
+  surface?: boolean;
   children: ReactNode;
 }) {
+  const content = (
+    <>
+      <SectionHeader id={id} index={index} label={label} title={title} />
+      {children}
+    </>
+  );
   return (
     <section id={id} aria-labelledby={`${id}-title`} className="mx-auto w-full max-w-6xl px-4 py-20 sm:px-6 md:py-32">
-      <header className="mb-10 md:mb-14">
-        <p className="flex items-center gap-3 font-mono text-xs tracking-[0.2em] text-muted uppercase">
-          <span className="text-accent-text">{index}</span>
-          <span aria-hidden className="h-px w-8 bg-line" />
-          {label}
-        </p>
-        <h2
-          id={`${id}-title`}
-          className="mt-4 max-w-3xl font-display text-3xl leading-tight font-medium text-balance md:text-5xl"
-        >
-          {title ?? label}
-        </h2>
-      </header>
-      {children}
+      {surface ? (
+        <div className="rounded-lg border border-border/50 bg-panel/85 p-6 backdrop-blur-md sm:p-10 md:p-14">{content}</div>
+      ) : (
+        content
+      )}
     </section>
+  );
+}
+
+function SectionHeader({ id, index, label, title }: { id: string; index: string; label: string; title?: string }) {
+  return (
+    <header className="mb-10 md:mb-14">
+      <p className="flex items-center gap-3 font-mono text-xs tracking-[0.2em] text-muted uppercase">
+        <span className="text-accent-text">{index}</span>
+        <span aria-hidden className="h-px w-8 bg-line" />
+        {label}
+      </p>
+      <h2
+        id={`${id}-title`}
+        className="mt-4 max-w-3xl font-display text-3xl leading-tight font-medium text-balance md:text-5xl"
+      >
+        {title ?? label}
+      </h2>
+    </header>
   );
 }
 

@@ -63,6 +63,14 @@ body {
   }
 }
 
+/* At the very top of the page the nav is see-through over the hero; once scrolling starts it is a
+   dark translucent bar (the Tailwind classes on the header). Unlayered, so it wins over utilities. */
+[data-nav][data-top] {
+  background-color: transparent;
+  border-color: transparent;
+  backdrop-filter: none;
+}
+
 /* Lenis recommended base styles. */
 html.lenis,
 html.lenis body {

@@ -1,4 +1,5 @@
 import { Nav } from "@/components/Nav";
+import { SceneBackdrop } from "@/components/hero/SceneBackdrop";
 import { Hero } from "@/components/sections/Hero";
 import { About } from "@/components/sections/About";
 import { Systems } from "@/components/sections/Systems";
@@ -12,7 +13,9 @@ export default function Home() {
   return (
     <>
       <Nav />
-      <main>
+      {/* Desktop: the hangar scene, then its blurred still, fixed behind the whole page. */}
+      <SceneBackdrop />
+      <main className="relative z-10">
         <Hero />
         <About />
         <Systems />
