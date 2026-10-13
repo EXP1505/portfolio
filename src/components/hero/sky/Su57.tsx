@@ -10,27 +10,33 @@ import {
   Mesh,
   MeshStandardMaterial,
   ShaderMaterial,
+  Vector3,
   type Object3D,
   type Texture,
 } from "three";
-import { BODY_NORMAL_SCALE, COLORS, OPENING } from "./config";
+import { AMBER_HOT, BODY_NORMAL_SCALE, RIM_WIDTH } from "./config";
 
 export const MODEL = "/models/su57.glb";
 // Self-hosted Draco decoder (copied from three/examples) so the scene makes no third-party requests.
 export const DRACO = "/draco/";
 
-// Shared by every rim shell, so the reveal can drive the rim from one place.
+// Shared by every rim shell, so the reveal can drive the rim from one place. uSunDir is world-space
+// and constant per frame (the sun doesn't move; the sky+jet rig orbits under it) — the scene copies
+// the same direction used for the key light into this uniform every frame.
 export const rimUniforms = {
-  uRimColor: { value: new Color(COLORS.backlight) },
-  uRimIntensity: { value: OPENING.rimIntensity },
-  uRimWidth: { value: OPENING.rimWidth },
+  uRimColor: { value: new Color(AMBER_HOT) },
+  uRimIntensity: { value: 1.2 },
+  uRimWidth: { value: RIM_WIDTH },
+  uSunDir: { value: new Vector3(0, 0.03, -1) },
 };
 
 /**
  * Backlit rim as an inverted hull: a back-face-only copy of the airframe inflated along its normals.
  * It can only show where it pokes past the silhouette, so it reads as a razor-thin line of light
- * wrapping the edges. Brighter on up-facing edges (light comes from the doors above/behind), faint
- * underneath. A Fresnel term can't do this head-on: most of a jet's surface grazes the camera.
+ * wrapping the edges. Lit by how much each edge's WORLD-space normal faces the real sun direction
+ * (not a fixed "up", which was wrong once the camera/jet began orbiting a sun that itself moves
+ * through the frame) — so the rim only lights edges actually facing the sun, at every orbit angle:
+ * near-full-silhouette rim at 0%, a raking highlight once the sun swings to the side by 100%.
  * Additive, so fading the intensity to zero makes the line vanish rather than turn into a dark outline.
  */
 const rimMaterial = new ShaderMaterial({
@@ -42,18 +48,20 @@ const rimMaterial = new ShaderMaterial({
   fog: false,
   vertexShader: /* glsl */ `
     uniform float uRimWidth;
-    varying float vUp;
+    uniform vec3 uSunDir;
+    varying float vSunFacing;
     void main() {
-      vUp = normalize(normalMatrix * normal).y;
+      vec3 worldNormal = normalize(mat3(modelMatrix) * normal);
+      vSunFacing = dot(worldNormal, normalize(uSunDir));
       gl_Position = projectionMatrix * modelViewMatrix * vec4(position + normal * uRimWidth, 1.0);
     }
   `,
   fragmentShader: /* glsl */ `
     uniform vec3 uRimColor;
     uniform float uRimIntensity;
-    varying float vUp;
+    varying float vSunFacing;
     void main() {
-      float lit = 0.03 + 0.97 * smoothstep(0.05, 0.75, vUp);
+      float lit = 0.02 + 0.98 * smoothstep(-0.1, 0.55, vSunFacing);
       gl_FragColor = vec4(uRimColor * uRimIntensity * lit, 1.0);
       #include <tonemapping_fragment>
       #include <colorspace_fragment>
@@ -85,8 +93,8 @@ export function Su57() {
       mesh.material = material;
       if (RIM_MATERIALS.has(source.name)) mesh.add(new Mesh(mesh.geometry, rimMaterial));
     }
-    // The painted panel lines, rivet rows and weathering are fine detail, and from the low hero camera
-    // the upper surfaces are seen almost edge-on. Without anisotropic filtering they blur away there.
+    // The painted panel lines, rivet rows and weathering are fine detail, seen close to edge-on from
+    // this camera angle. Without anisotropic filtering they blur away there.
     for (const texture of textures) {
       texture.anisotropy = maxAnisotropy;
       texture.needsUpdate = true;

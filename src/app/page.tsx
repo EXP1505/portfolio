@@ -13,7 +13,7 @@ export default function Home() {
   return (
     <>
       <Nav />
-      {/* Desktop: the hangar scene, then its blurred still, fixed behind the whole page. */}
+      {/* Desktop: the sunrise scene, then its blurred still, fixed behind the whole page. */}
       <SceneBackdrop />
       <main className="relative z-10">
         <Hero />

@@ -4,8 +4,8 @@ import { useEffect, useLayoutEffect } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { useLenis } from "lenis/react";
-import { applyBackdropStyles, backdrop, backdropPaused, notifyBackdrop } from "./hangar/backdrop";
-import { reveal } from "./hangar/reveal";
+import { applyBackdropStyles, backdrop, backdropPaused, notifyBackdrop } from "./sky/backdrop";
+import { reveal } from "./sky/reveal";
 
 /**
  * Scroll side of the pinned hero. The section (#top) is a tall runway whose inner stage is CSS-sticky,

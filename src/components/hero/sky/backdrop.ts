@@ -1,6 +1,6 @@
 /**
  * Shared state for the blurred page background (desktop only), like `reveal` but for after the reveal:
- * once the lit hangar has settled at 100%, its final frame is captured as a sharp still plus a
+ * once the lit scene has settled at 100%, its final frame is captured as a sharp still plus a
  * pre-blurred copy. While content scrolls over it, those images are shown and the canvas is paused.
  *
  * `blur` (0..1) is written by ScrollTrigger: 0 = still in the hero runway (live scene), 1 = fully
