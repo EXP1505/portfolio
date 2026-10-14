@@ -27,12 +27,16 @@ export function applyBackdropStyles() {
   const shown = backdropPaused();
   set("[data-backdrop-sharp]", shown ? 1 : 0);
   set("[data-backdrop-blurred]", shown ? backdrop.blur : 0);
-  set("[data-backdrop-dim]", backdrop.blur * BACKDROP_DIM);
+  // Scroll position alone drives `blur`, independent of whether a capture exists yet. Gating the
+  // dim on a real capture means a fast scroller who outruns asset loading sees the live (loading)
+  // scene undimmed instead of a dark overlay stacked on top of nothing — it still self-corrects
+  // the moment the first capture lands, same as the sharp/blurred crossfade above.
+  set("[data-backdrop-dim]", backdrop.sharp !== null ? backdrop.blur * BACKDROP_DIM : 0);
 }
 
 // Strength of the atmospheric blur, in CSS px at the captured resolution, and the dim at full blur.
 export const BACKDROP_BLUR_PX = 14;
-export const BACKDROP_DIM = 0.5;
+export const BACKDROP_DIM = 0.62;
 
 /** Make the pre-blurred copy once, on a downscaled 2D canvas (cheaper and blurrier per pixel). */
 export async function blurStill(src: string): Promise<string> {

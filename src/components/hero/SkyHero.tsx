@@ -2,33 +2,49 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { MathUtils, Vector3, type AmbientLight, type DirectionalLight, type Group } from "three";
+import {
+  MathUtils,
+  Vector3,
+  type AmbientLight,
+  type DirectionalLight,
+  type Group,
+  type PerspectiveCamera,
+} from "three";
 import { Afterburners } from "./sky/Afterburners";
 import { backdrop, backdropPaused, blurStill, notifyBackdrop } from "./sky/backdrop";
-import { AMBIENT_FILL, CAMERA, DEBUG_REAR_CAMERA, FLIGHT, GOLDEN } from "./sky/config";
+import { AMBIENT_FILL, CAMERA, FLIGHT, GOLDEN, TOUR_STOPS } from "./sky/config";
 import { reveal, stage } from "./sky/reveal";
 import { PostFX } from "./sky/PostFX";
 import { sun, SkyDome, useSkyEnvironment } from "./sky/Sky";
 import { rimUniforms, Su57 } from "./sky/Su57";
 import { useHeroReveal } from "./useHeroReveal";
 
-/** Eases the rendered reveal toward the scroll target, so even coarse wheel steps move the light smoothly. */
+// ?debugView=<TOUR_STOPS key> previews that camera-tour seat against the exact shipped scene,
+// pinned at golden hour (no sunrise wait), for art-directing shots without reviving /sky-test.
+// Not linked anywhere.
+function useDebugView() {
+  return useMemo(
+    () => (typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("debugView") : null),
+    [],
+  );
+}
+
+/** Eases the rendered reveal toward the scroll target, so even coarse wheel steps move the light smoothly.
+ * Any `?debugView` freezes it at 100% (golden hour) instead, so a preview doesn't wait on scroll. */
 function RevealDriver() {
+  const debugView = useDebugView();
   useFrame((_, delta) => {
+    if (debugView) {
+      reveal.value = 1;
+      reveal.target = 1;
+      reveal.stage = stage(1);
+      return;
+    }
     reveal.value = MathUtils.damp(reveal.value, reveal.target, 5, Math.min(delta, 0.1));
     if (Math.abs(reveal.value - reveal.target) < 1e-4) reveal.value = reveal.target;
     reveal.stage = stage(reveal.value);
   }, -1);
   return null;
-}
-
-// ?debugView=rear puts the camera behind the jet (afterburners in frame) using the exact shipped
-// scene/lighting/post code path, for checking fixes without reviving /sky-test. Not linked anywhere.
-function useDebugRearView() {
-  return useMemo(
-    () => typeof window !== "undefined" && new URLSearchParams(window.location.search).get("debugView") === "rear",
-    [],
-  );
 }
 
 const Y_AXIS = new Vector3(0, 1, 0);
@@ -48,8 +64,8 @@ function Flight() {
   const ambient = useRef<AmbientLight>(null);
   const [sunKnown, setSunKnown] = useState(0);
   useSkyEnvironment(useCallback(() => setSunKnown((n) => n + 1), []));
-  const rear = useDebugRearView();
-  const seat = rear ? DEBUG_REAR_CAMERA : CAMERA;
+  const debugView = useDebugView();
+  const seat = debugView && debugView in TOUR_STOPS ? TOUR_STOPS[debugView as keyof typeof TOUR_STOPS] : CAMERA;
 
   // The seat's base heading points the camera at the sun, so at 0% the sun sits behind/beside the jet.
   const baseHeading = useMemo(() => {
@@ -71,20 +87,33 @@ function Flight() {
     const rotate = (v: Vector3) => v.clone().applyAxisAngle(Y_AXIS, -heading);
     camera.position.copy(rotate(seat.position));
     camera.lookAt(rotate(seat.target));
+    const persp = camera as PerspectiveCamera;
+    if (persp.fov !== seat.fov) {
+      persp.fov = seat.fov;
+      persp.updateProjectionMatrix();
+    }
     if (rig.current) rig.current.rotation.y = -heading;
     if (jet.current) {
       // The jet's own pose, local to the rig: a slight bank with a gentle drift, plus a constant yaw
       // offset so the nose doesn't point dead down the rig's centreline — like formation footage.
-      jet.current.rotation.set(
-        FLIGHT.bankAmplitude * Math.sin(s * FLIGHT.bankSpeed),
-        FLIGHT.yaw,
-        FLIGHT.rollBase + FLIGHT.rollAmplitude * Math.sin(s * FLIGHT.rollSpeed),
-      );
-      jet.current.position.set(
-        FLIGHT.driftX * Math.sin(s * FLIGHT.driftXSpeed),
-        FLIGHT.driftY * Math.sin(s * FLIGHT.driftYSpeed),
-        0,
-      );
+      // The camera only compensates for the rig's heading, not for this — fine at the hero seat's
+      // long distance, but it visibly throws off the closer camera-tour seats, so previews hold the
+      // jet at identity pose to match the plain jet-local coordinates they were authored against.
+      if (debugView) {
+        jet.current.rotation.set(0, 0, 0);
+        jet.current.position.set(0, 0, 0);
+      } else {
+        jet.current.rotation.set(
+          FLIGHT.bankAmplitude * Math.sin(s * FLIGHT.bankSpeed),
+          FLIGHT.yaw,
+          FLIGHT.rollBase + FLIGHT.rollAmplitude * Math.sin(s * FLIGHT.rollSpeed),
+        );
+        jet.current.position.set(
+          FLIGHT.driftX * Math.sin(s * FLIGHT.driftXSpeed),
+          FLIGHT.driftY * Math.sin(s * FLIGHT.driftYSpeed),
+          0,
+        );
+      }
     }
 
     scene.environmentIntensity = st.env;
@@ -101,7 +130,7 @@ function Flight() {
   return (
     <>
       <Suspense fallback={null}>
-        <SkyDome stage={reveal.stage} />
+        <SkyDome />
       </Suspense>
       <directionalLight ref={key} color={GOLDEN} />
       <ambientLight ref={ambient} color={AMBIENT_FILL} />

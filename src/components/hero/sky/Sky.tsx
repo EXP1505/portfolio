@@ -17,7 +17,7 @@ import {
 } from "three";
 import { HDRLoader } from "three/examples/jsm/loaders/HDRLoader.js";
 import { AMBER, AMBER_HOT, SKY_HDR, SKY_PHOTO, STEEL } from "./config";
-import type { Stage } from "./reveal";
+import { reveal } from "./reveal";
 
 // Where the sun is in the photo (found from the HDR's brightest pixel once it loads). World-space and
 // constant for the rest of the session: the sky+jet rig orbits under it, the sun itself never moves.
@@ -67,10 +67,13 @@ const skyMaterial = new ShaderMaterial({
       vec2 uv = vec2(atan(dir.z, dir.x) / (2.0 * PI) + 0.5, asin(clamp(h, -1.0, 1.0)) / PI + 0.5);
       vec3 photo = texture2D(uPhoto, uv).rgb;
       // Light grade: a touch more contrast and saturation (the tone mapper flattens an LDR photo),
-      // and a darker band below the horizon so it reads as distant haze, not a bright floor.
+      // and a darker band below the horizon so it reads as distant haze, not a bright floor. The
+      // source photo's own horizon band is quite muted once exposure/ACES compress it, so a flat
+      // gain lifts it back to an actual golden-hour read instead of a thin grey-brown line.
       float l = dot(photo, vec3(0.2126, 0.7152, 0.0722));
       photo = mix(vec3(l), photo, 1.3);
       photo = pow(max(photo, 0.0), vec3(1.3));
+      photo *= 2.2;
       photo *= mix(1.0, 0.45, smoothstep(0.0, -0.18, h));
       // Sun glow: a bright core plus soft halo, over-bright so bloom gives a real sun flare.
       float s = max(dot(dir, normalize(uSunDir)), 0.0);
@@ -89,7 +92,7 @@ const skyMaterial = new ShaderMaterial({
   `,
 });
 
-export function SkyDome({ stage }: { stage: Stage }) {
+export function SkyDome() {
   const dome = useRef<Mesh>(null);
   const photo = useTexture(SKY_PHOTO, (tex) => {
     tex.colorSpace = SRGBColorSpace;
@@ -102,12 +105,17 @@ export function SkyDome({ stage }: { stage: Stage }) {
 
   useFrame(({ camera }) => {
     dome.current?.position.copy(camera.position);
+    // Read `reveal.stage` directly, every frame — not as a prop. `SkyDome` mounts once (behind its
+    // own Suspense, waiting on the texture) and essentially never re-renders afterward, so a `stage`
+    // prop would freeze at whatever reveal.stage happened to be at that one render and never update
+    // again, no matter how far the page is scrolled.
+    const st = reveal.stage;
     const u = skyMaterial.uniforms;
     u.uPhoto.value = photo;
-    u.uPhotoGain.value = stage.photo;
-    u.uPredawn.value = stage.predawn;
+    u.uPhotoGain.value = st.photo;
+    u.uPredawn.value = st.predawn;
     u.uSunDir.value.copy(sun.dir);
-    u.uSunGlow.value = stage.sunGlow;
+    u.uSunGlow.value = st.sunGlow;
     u.uGlowColor.value.set(GOLDEN_GLOW).lerp(AMBER_HOT_COLOR, 0.4);
   });
   return (

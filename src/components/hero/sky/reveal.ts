@@ -16,8 +16,10 @@ export function stage(p: number) {
     rim: lerp(1.2, 0, smooth(0.3, 0.6, p)),
     ambient: lerp(0.01, 0.03, p),
     // Orbit (radians) of the sky + jet rig under the fixed camera: sun starts held behind/beside the
-    // jet (silhouette), then swings round so it rakes in from the side by 100%.
-    orbit: lerp(0, -1.15, smooth(0.5, 1, p)),
+    // jet (silhouette), then swings round so it rakes in from the side by 100%. Kept modest: the
+    // photo's warm band only spans a narrow slice of the 360° sky, so a wide swing walks the camera
+    // straight past it into the cool blue side.
+    orbit: lerp(0, -0.35, smooth(0.5, 1, p)),
   };
 }
 export type Stage = ReturnType<typeof stage>;
