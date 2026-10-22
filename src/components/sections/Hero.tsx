@@ -20,14 +20,23 @@ export function Hero() {
         </div>
 
         <div className="hero-fade pointer-events-none absolute inset-x-0 top-[13vh] px-4 text-center sm:px-6">
+          {/* A real dark backing behind the glyphs, not just a text-shadow trick — the sky can get
+              genuinely bright during the reveal, and a shadow alone doesn't move the actual background
+              luminance a contrast check measures. Flat fill (not a gradient — a radial falloff left the
+              wide text's own edges under-covered exactly where the sun disc sits) on the title itself
+              (inline-block, so it hugs the text) rather than a separate sibling, because the GSAP flip
+              transforms only the title element — a sibling scrim stops tracking the moment the flip
+              starts moving/shrinking it toward the nav logo. */}
           <h1
             id="hero-title"
             data-hero-title
-            className="font-display text-[clamp(1.5rem,6vw,5.5rem)] leading-none font-normal tracking-[0.28em] uppercase [text-shadow:0_0_36px_rgba(232,236,241,0.28)] [padding-left:0.28em]"
+            className="inline-block rounded-lg bg-[rgba(11,15,20,0.7)] px-6 py-5 font-display text-[clamp(1.5rem,6vw,5.5rem)] leading-none font-normal tracking-[0.28em] uppercase [text-shadow:0_2px_14px_rgba(11,15,20,0.7),0_0_36px_rgba(232,236,241,0.22)] [padding-left:0.28em]"
           >
             {site.name}
           </h1>
-          <div data-hero-sub>
+          {/* A dark backing shadow (not just the soft glow) keeps this legible once the sunrise
+              brightens the sky behind it — the glow alone does nothing against a bright backdrop. */}
+          <div data-hero-sub className="[text-shadow:0_1px_8px_rgba(11,15,20,0.75)]">
             <p className="mt-5 font-mono text-[11px] tracking-[0.25em] text-muted uppercase sm:text-xs">
               {site.role} · {site.location}
             </p>

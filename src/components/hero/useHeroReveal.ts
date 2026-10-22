@@ -6,6 +6,12 @@ import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { useLenis } from "lenis/react";
 import { applyBackdropStyles, backdrop, backdropPaused, notifyBackdrop } from "./sky/backdrop";
 import { reveal } from "./sky/reveal";
+import { notifyTour, tour } from "./sky/tour";
+
+// One per non-text-heavy section (see TOUR_STOPS in sky/config.ts). VyominCaseStudy is
+// deliberately excluded — it stays a static background, per CLAUDE.md's "long reading section"
+// spec for that one.
+const TOUR_IDS = ["about", "systems", "projects", "fincraft", "cp", "contact"] as const;
 
 /**
  * Scroll side of the pinned hero. The section (#top) is a tall runway whose inner stage is CSS-sticky,
@@ -83,6 +89,36 @@ export function useHeroReveal() {
           { y: 60 },
           { y: 0, ease: "none", scrollTrigger: { trigger: el, start: "top bottom", end: "top 65%", scrub: true } },
         );
+      });
+
+      // Camera-tour handoff: while a tour-stop section occupies roughly the middle of the
+      // viewport, the live jet wakes up and glides to that section's seat (see Flight() in
+      // SkyHero.tsx). Narrower than the entry-parallax trigger above on purpose — the tour
+      // shouldn't wake the instant a section's top edge appears, and should hold through most of
+      // the section's reading span, not just its entry. The gap between adjacent sections'
+      // windows (and the whole VyominCaseStudy span, which has no entry here at all) is a
+      // deliberate dead zone where `tour.active` is null and the backdrop freezes/pauses.
+      TOUR_IDS.forEach((id) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const setActive = (value: typeof id | null) => {
+          // Don't let a stale onLeave from a stop that already lost the handoff clobber whatever
+          // claimed it next.
+          if (value === null && tour.active !== id) return;
+          const wasPaused = backdropPaused();
+          tour.active = value;
+          notifyTour();
+          if (backdropPaused() !== wasPaused) notifyBackdrop();
+        };
+        ScrollTrigger.create({
+          trigger: el,
+          start: "top 55%",
+          end: "bottom 45%",
+          onEnter: () => setActive(id),
+          onEnterBack: () => setActive(id),
+          onLeave: () => setActive(null),
+          onLeaveBack: () => setActive(null),
+        });
       });
 
       // Positions on this timeline are fractions of the runway (total duration 1).

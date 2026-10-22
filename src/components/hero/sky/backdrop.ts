@@ -1,3 +1,5 @@
+import { tour } from "./tour";
+
 /**
  * Shared state for the blurred page background (desktop only), like `reveal` but for after the reveal:
  * once the lit scene has settled at 100%, its final frame is captured as a sharp still plus a
@@ -15,8 +17,14 @@ export const backdrop = {
 
 export const notifyBackdrop = () => backdrop.listeners.forEach((fn) => fn());
 
-/** The canvas pauses only when there is a still to show in its place. */
-export const backdropPaused = () => backdrop.blur > 0 && backdrop.sharp !== null;
+/** The canvas pauses only past the hero, with a still ready, and no live camera-tour stop active. */
+export const backdropPaused = () => tour.active === null && backdrop.blur > 0 && backdrop.sharp !== null;
+
+/** Set by `Capture` for exactly one frame, read by `Flight` to hide the jet so it can grab a
+ * jet-free sky still for `blurred` — a blur radius big enough to dissolve the jet's own silhouette
+ * would also flatten the sky's own detail, so the clean fix is a second, jet-free capture rather
+ * than a stronger blur on the one with the jet in it. */
+export const captureFlags = { hideJet: false };
 
 /** Apply the scroll-driven crossfade straight to the DOM (no React render per scroll frame). */
 export function applyBackdropStyles() {
@@ -35,6 +43,8 @@ export function applyBackdropStyles() {
 }
 
 // Strength of the atmospheric blur, in CSS px at the captured resolution, and the dim at full blur.
+// Modest now that `blurred` is captured from a jet-free frame (see `captureFlags`) — this just
+// softens the sky's own detail a touch, it doesn't need to dissolve anything sharp-edged anymore.
 export const BACKDROP_BLUR_PX = 14;
 export const BACKDROP_DIM = 0.62;
 

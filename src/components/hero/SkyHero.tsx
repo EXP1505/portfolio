@@ -11,12 +11,13 @@ import {
   type PerspectiveCamera,
 } from "three";
 import { Afterburners } from "./sky/Afterburners";
-import { backdrop, backdropPaused, blurStill, notifyBackdrop } from "./sky/backdrop";
-import { AMBIENT_FILL, CAMERA, FLIGHT, GOLDEN, TOUR_STOPS } from "./sky/config";
+import { backdrop, backdropPaused, blurStill, captureFlags, notifyBackdrop } from "./sky/backdrop";
+import { AMBIENT_FILL, CAMERA, FLIGHT, GOLDEN, TOUR_DAMP, TOUR_SETTLE_EPSILON, TOUR_STOPS } from "./sky/config";
 import { reveal, stage } from "./sky/reveal";
 import { PostFX } from "./sky/PostFX";
 import { sun, SkyDome, useSkyEnvironment } from "./sky/Sky";
 import { rimUniforms, Su57 } from "./sky/Su57";
+import { notifyTour, tour } from "./sky/tour";
 import { useHeroReveal } from "./useHeroReveal";
 
 // ?debugView=<TOUR_STOPS key> previews that camera-tour seat against the exact shipped scene,
@@ -65,52 +66,107 @@ function Flight() {
   const [sunKnown, setSunKnown] = useState(0);
   useSkyEnvironment(useCallback(() => setSunKnown((n) => n + 1), []));
   const debugView = useDebugView();
-  const seat = debugView && debugView in TOUR_STOPS ? TOUR_STOPS[debugView as keyof typeof TOUR_STOPS] : CAMERA;
+  const debugSeat = debugView && debugView in TOUR_STOPS ? TOUR_STOPS[debugView as keyof typeof TOUR_STOPS] : null;
 
-  // The seat's base heading points the camera at the sun, so at 0% the sun sits behind/beside the jet.
+  // Base heading points the camera at the sun, so at 0% the sun sits behind/beside the jet. Tied to
+  // the hero seat for the whole live page (even once a camera-tour stop is active) so the
+  // world-space sun direction never jumps when the camera changes seats — only `current` (below)
+  // moves. Debug previews recompute it per seat instead, since each is judged standalone.
+  const headingSeat = debugSeat ?? CAMERA;
   const baseHeading = useMemo(() => {
     void sunKnown;
-    const look = seat.target.clone().sub(seat.position).setY(0).normalize();
+    const look = headingSeat.target.clone().sub(headingSeat.position).setY(0).normalize();
     const want = sun.dir.clone().setY(0).normalize();
     // Sun slightly left of the jet in the opening frame.
     return Math.atan2(look.x, look.z) - Math.atan2(want.x, want.z) + 0.18;
-  }, [sunKnown, seat]);
+  }, [sunKnown, headingSeat]);
 
-  useFrame(({ clock, scene, camera, gl }) => {
+  // The live (non-debug) camera seat the tour chases toward — TOUR_STOPS[tour.active], or back to
+  // CAMERA once no stop is active. Starts already at CAMERA, so the hero itself is completely
+  // unaffected (damping toward a target you're already at is a no-op) — only scrolling into a tour
+  // stop ever moves it. Debug previews bypass this and pin straight to debugSeat, as before.
+  const current = useRef({ position: CAMERA.position.clone(), target: CAMERA.target.clone(), fov: CAMERA.fov });
+  // 0 = idle flight animation, 1 = held rock-steady (identity pose) for a tour close-up. A blend
+  // factor rather than damping the pose values directly, so both steady states stay exactly exact
+  // (no asymptotic creep away from the idle sinusoid) and only the transition between them glides.
+  const holdFactor = useRef(0);
+
+  useFrame(({ clock, scene, camera, gl }, delta) => {
     const s = clock.elapsedTime;
     const st = reveal.stage;
+    const d = Math.min(delta, 0.1);
     gl.toneMappingExposure = st.exposure;
+
+    let seatPosition: Vector3;
+    let seatTarget: Vector3;
+    let seatFov: number;
+    if (debugSeat) {
+      seatPosition = debugSeat.position;
+      seatTarget = debugSeat.target;
+      seatFov = debugSeat.fov;
+    } else {
+      const want = tour.active ? TOUR_STOPS[tour.active] : CAMERA;
+      current.current.position.x = MathUtils.damp(current.current.position.x, want.position.x, TOUR_DAMP, d);
+      current.current.position.y = MathUtils.damp(current.current.position.y, want.position.y, TOUR_DAMP, d);
+      current.current.position.z = MathUtils.damp(current.current.position.z, want.position.z, TOUR_DAMP, d);
+      current.current.target.x = MathUtils.damp(current.current.target.x, want.target.x, TOUR_DAMP, d);
+      current.current.target.y = MathUtils.damp(current.current.target.y, want.target.y, TOUR_DAMP, d);
+      current.current.target.z = MathUtils.damp(current.current.target.z, want.target.z, TOUR_DAMP, d);
+      current.current.fov = MathUtils.damp(current.current.fov, want.fov, TOUR_DAMP, d);
+      seatPosition = current.current.position;
+      seatTarget = current.current.target;
+      seatFov = current.current.fov;
+
+      if (tour.active) {
+        const dist = current.current.position.distanceTo(want.position) + current.current.target.distanceTo(want.target);
+        const settled = dist < TOUR_SETTLE_EPSILON;
+        if (settled !== tour.settled) {
+          tour.settled = settled;
+          notifyTour();
+        }
+      } else if (tour.settled) {
+        tour.settled = false;
+        notifyTour();
+      }
+    }
 
     // The rig carries the orbit heading; the camera orbits the same amount, so the jet's framing on
     // screen never changes — only which part of the fixed sky/sun the camera is looking across does.
     const heading = baseHeading + st.orbit;
     const rotate = (v: Vector3) => v.clone().applyAxisAngle(Y_AXIS, -heading);
-    camera.position.copy(rotate(seat.position));
-    camera.lookAt(rotate(seat.target));
+    camera.position.copy(rotate(seatPosition));
+    camera.lookAt(rotate(seatTarget));
     const persp = camera as PerspectiveCamera;
-    if (persp.fov !== seat.fov) {
-      persp.fov = seat.fov;
+    if (Math.abs(persp.fov - seatFov) > 1e-3) {
+      persp.fov = seatFov;
       persp.updateProjectionMatrix();
     }
     if (rig.current) rig.current.rotation.y = -heading;
     if (jet.current) {
+      // `Capture` flips this for exactly one frame to grab a jet-free sky still for `blurred`.
+      jet.current.visible = !captureFlags.hideJet;
       // The jet's own pose, local to the rig: a slight bank with a gentle drift, plus a constant yaw
       // offset so the nose doesn't point dead down the rig's centreline — like formation footage.
       // The camera only compensates for the rig's heading, not for this — fine at the hero seat's
-      // long distance, but it visibly throws off the closer camera-tour seats, so previews hold the
-      // jet at identity pose to match the plain jet-local coordinates they were authored against.
+      // long distance, but it visibly throws off the closer camera-tour seats, so previews (and a
+      // live tour stop) hold the jet at identity pose to match the plain jet-local coordinates the
+      // seats were authored against ("the jet stays rock-steady" during a close-up).
       if (debugView) {
         jet.current.rotation.set(0, 0, 0);
         jet.current.position.set(0, 0, 0);
       } else {
+        const wantHold = tour.active !== null ? 1 : 0;
+        holdFactor.current = MathUtils.damp(holdFactor.current, wantHold, TOUR_DAMP, d);
+        if (Math.abs(holdFactor.current - wantHold) < 1e-3) holdFactor.current = wantHold;
+        const idle = 1 - holdFactor.current;
         jet.current.rotation.set(
-          FLIGHT.bankAmplitude * Math.sin(s * FLIGHT.bankSpeed),
-          FLIGHT.yaw,
-          FLIGHT.rollBase + FLIGHT.rollAmplitude * Math.sin(s * FLIGHT.rollSpeed),
+          FLIGHT.bankAmplitude * Math.sin(s * FLIGHT.bankSpeed) * idle,
+          FLIGHT.yaw * idle,
+          (FLIGHT.rollBase + FLIGHT.rollAmplitude * Math.sin(s * FLIGHT.rollSpeed)) * idle,
         );
         jet.current.position.set(
-          FLIGHT.driftX * Math.sin(s * FLIGHT.driftXSpeed),
-          FLIGHT.driftY * Math.sin(s * FLIGHT.driftYSpeed),
+          FLIGHT.driftX * Math.sin(s * FLIGHT.driftXSpeed) * idle,
+          FLIGHT.driftY * Math.sin(s * FLIGHT.driftYSpeed) * idle,
           0,
         );
       }
@@ -147,31 +203,66 @@ function Flight() {
 }
 
 /**
- * Once the reveal has settled at 100% (and the HDR is in, so reflections/sun direction are final),
- * capture the frame once: a sharp still plus a pre-blurred copy for the page background. Runs after
- * the post-processing render in the same frame, so the drawing buffer is still valid. A resize clears
- * the capture; the canvas then resumes (nothing to pause behind) and captures again.
+ * Freezes a still of whatever the scene currently shows each time it goes from live to paused —
+ * the hero settling at 100%, leaving a camera-tour stop with no next stop yet active, or entering
+ * VyominCaseStudy's long-read span. Captures two stills: a sharp one (jet included, shown first as
+ * the blur ramps in) and a jet-free one that becomes `blurred` — blurring a frame that still has
+ * the jet in it only softens its edges (a radius big enough to actually dissolve a shape that large
+ * would flatten the sky's own detail too), so the clean background instead comes from a second
+ * capture with the jet hidden for exactly one frame via `captureFlags`. Runs after the
+ * post-processing render in the same frame, so the drawing buffer is still valid each time.
  */
 function Capture() {
   const gl = useThree((s) => s.gl);
   const get = useThree((s) => s.get);
   const { width, height } = useThree((s) => s.size);
   const busy = useRef(false);
+  // 0: idle: 1: sharp captured, jet just hidden, next frame grabs the sky-only still; 2: done —
+  // without this terminal state, the frame right after `blurred` resolves (busy flips back to
+  // false, but step was still 1) fell straight back into the sky-only branch, except the jet was
+  // already visible again by then, silently overwriting `blurred` with a jet-included capture.
+  const step = useRef<0 | 1 | 2>(0);
+  // Whether the scene was "live" (still moving) as of last frame — a live→paused edge re-arms the
+  // capture (so each freeze reflects wherever the camera actually stopped, not a stale one from
+  // the hero or an earlier tour stop); a paused→live edge clears stale captures too, so a quick
+  // re-pause before a fresh one lands can't briefly flash an old frame.
+  const wasLive = useRef(true);
+
+  const reset = useCallback(() => {
+    backdrop.sharp = null;
+    backdrop.blurred = null;
+    step.current = 0;
+    captureFlags.hideJet = false;
+    notifyBackdrop();
+  }, []);
 
   useEffect(() => {
     if (!backdrop.sharp) return;
-    backdrop.sharp = null;
-    backdrop.blurred = null;
-    notifyBackdrop();
-  }, [width, height]);
+    reset();
+  }, [width, height, reset]);
 
   useFrame(() => {
-    if (backdrop.sharp || busy.current || reveal.value !== 1 || reveal.target !== 1) return;
-    if (!get().scene.environment) return;
+    const isLive = tour.active !== null || reveal.value !== 1 || reveal.target !== 1;
+    if (wasLive.current !== isLive) {
+      wasLive.current = isLive;
+      reset();
+    }
+
+    if (busy.current || step.current === 2) return;
+    if (step.current === 0) {
+      if (backdrop.sharp || isLive) return;
+      if (!get().scene.environment) return;
+      backdrop.sharp = gl.domElement.toDataURL("image/webp", 0.9);
+      captureFlags.hideJet = true; // Flight applies this before next frame's render
+      step.current = 1;
+      return;
+    }
+    // This frame rendered with the jet hidden (Flight set visible=false before PostFX drew it).
+    const skyOnly = gl.domElement.toDataURL("image/webp", 0.9);
+    captureFlags.hideJet = false; // restore for the live scene
     busy.current = true;
-    const sharp = gl.domElement.toDataURL("image/webp", 0.9);
-    blurStill(sharp).then((blurred) => {
-      backdrop.sharp = sharp;
+    step.current = 2;
+    blurStill(skyOnly).then((blurred) => {
       backdrop.blurred = blurred;
       busy.current = false;
       notifyBackdrop();

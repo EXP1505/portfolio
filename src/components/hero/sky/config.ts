@@ -31,21 +31,33 @@ export const CAMERA = {
 export const TOUR_STOPS = {
   // Establishing shot: full aircraft, broadside profile.
   about: { position: new Vector3(40, 3.5, -1), target: new Vector3(0, 0.3, -1), fov: 22 },
-  // Forward 3/4 held in the nose/intake half of the fuselage (z > 0) — every earlier pass let the
-  // target or camera drift aft toward the wing root, and the much larger wing/tail/stab surfaces,
-  // being physically closer to the camera than the intake itself, dominated the frame regardless
-  // of aim. Keeping both camera and target forward avoids that entirely.
-  systems: { position: new Vector3(14, 2, 8), target: new Vector3(3, 0.3, 2), fov: 24 },
+  // Elevated forward 3/4, ahead of and above the nose looking back down the spine — reads clearly
+  // as structure (panel lines, the diamond fuselage cross-section) with the rim light tracing panel
+  // seams. A near-lateral angle at this same target (tried first) either distorted into an abstract
+  // close-up or, pulled back, just shrank into a duplicate of the `about` broadside — the elevated
+  // forward angle is what actually makes it read as something distinct. Matches the approved
+  // "AIRFRAME · STRUCTURE" label; the intakes themselves are flush with the fuselage and don't read
+  // as a recognizable shape at any distance.
+  systems: { position: new Vector3(10, 5, 16), target: new Vector3(1, 0.2, 5), fov: 26 },
   // Close 3/4-high over the spine, canopy as the focal point.
   projects: { position: new Vector3(5.5, 3, 9.5), target: new Vector3(0, 0.9, 4.3), fov: 26 },
-  // Elevated 3/4 along the wing with the horizon in frame — the first pass was nearly flat top-down
-  // and too close, reading as an abstract panel instead of a wing.
-  fincraft: { position: new Vector3(20, 7, -3), target: new Vector3(3, -0.3, -3), fov: 22 },
+  // Elevated 3/4 over the wing, pulled back enough to read the swept planform and leading edge
+  // clearly with the horizon in frame — earlier passes were too close, reading as an abstract panel
+  // instead of a wing.
+  fincraft: { position: new Vector3(27, 10, -3), target: new Vector3(3, -0.3, -3), fov: 26 },
   // Rear 3/4, low, on the twin nozzle cluster (afterburners render lit by default).
   cp: { position: new Vector3(-9, 2.2, -17), target: new Vector3(0, 0.1, -6), fov: 30 },
   // Wide pull-back, near head-on — the closing beat.
   contact: { position: new Vector3(3, 1.4, 48), target: new Vector3(0, 0.5, 0), fov: 18 },
 };
+
+// Camera-tour damping: how fast the live camera/jet chase a changed seat (see `Flight()` in
+// SkyHero.tsx). Slower than the hero's own lighting damp (rate 5) — this one needs to read as a
+// slow, continuous glide ("like a chase plane"), never a snap.
+export const TOUR_DAMP = 2.2;
+// Combined position+target distance (metres) below which a tour stop counts as "arrived" — gates
+// the HUD callout's fade-in (see `tour.settled` in sky/tour.ts).
+export const TOUR_SETTLE_EPSILON = 0.08;
 
 // Jet flight motion: slight bank with a gentle drift, like formation air-to-air footage.
 export const FLIGHT = {

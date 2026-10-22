@@ -5,7 +5,7 @@ export function Nav() {
   return (
     <header
       data-nav
-      className="fixed inset-x-0 top-0 z-50 border-b border-border/60 bg-bg/75 backdrop-blur-md transition-[background-color,border-color,backdrop-filter] duration-500 ease-out"
+      className="fixed inset-x-0 top-0 z-50 border-b border-transparent bg-gradient-to-b from-bg/94 to-bg/88 backdrop-blur-xl transition-[background-color,border-color,backdrop-filter] duration-500 ease-out"
     >
       <NavScrollState />
       <nav

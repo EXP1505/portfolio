@@ -37,8 +37,13 @@ export function Section({
 
 function SectionHeader({ id, index, label, title }: { id: string; index: string; label: string; title?: string }) {
   return (
-    <header className="mb-10 md:mb-14">
-      <p className="flex items-center gap-3 font-mono text-xs tracking-[0.2em] text-muted uppercase">
+    // Sections without `surface` sit this directly over the blurred sky backdrop, not a panel. The
+    // h2 (large, near-white) clears contrast from the text-shadow alone; the small muted label/index
+    // line doesn't — that colour is already closer to the backdrop's own tone, so a shadow alone
+    // can't darken it enough. It gets a real (near-opaque) backing pill instead, sized to the row
+    // itself (inline-flex, not flex) so the fill covers the inter-item gaps too, not just the glyphs.
+    <header className="mb-10 [text-shadow:0_1px_10px_rgba(11,15,20,0.8)] md:mb-14">
+      <p className="inline-flex items-center gap-3 rounded-full bg-[rgba(11,15,20,0.75)] px-3 py-1 font-mono text-xs tracking-[0.2em] text-muted uppercase">
         <span className="text-accent-text">{index}</span>
         <span aria-hidden className="h-px w-8 bg-line" />
         {label}
