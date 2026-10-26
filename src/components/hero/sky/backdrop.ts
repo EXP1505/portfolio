@@ -48,11 +48,14 @@ export function applyBackdropStyles() {
 export const BACKDROP_BLUR_PX = 14;
 export const BACKDROP_DIM = 0.62;
 
-/** Make the pre-blurred copy once, on a downscaled 2D canvas (cheaper and blurrier per pixel). */
+/** Make the pre-blurred copy once, on a downscaled 2D canvas (cheaper and blurrier per pixel).
+ * `src` is a throwaway intermediate (the caller never keeps it, only this function's own return
+ * value ends up in `backdrop.blurred`), so it's revoked here once decoded rather than leaking it. */
 export async function blurStill(src: string): Promise<string> {
   const img = new Image();
   img.src = src;
   await img.decode();
+  URL.revokeObjectURL(src);
   const scale = 0.5;
   const canvas = document.createElement("canvas");
   canvas.width = Math.round(img.width * scale);
@@ -62,5 +65,31 @@ export async function blurStill(src: string): Promise<string> {
   const pad = BACKDROP_BLUR_PX * 2;
   ctx.filter = `blur(${BACKDROP_BLUR_PX * scale}px)`;
   ctx.drawImage(img, -pad, -pad, canvas.width + pad * 2, canvas.height + pad * 2);
-  return canvas.toDataURL("image/webp", 0.85);
+  return canvasToObjectUrl(canvas);
+}
+
+/** `canvas.toBlob` wrapped in a promise, returning an object URL (not a base64 data URL — smaller,
+ * and avoids the base64-encode cost on top of the image encode). */
+function canvasToObjectUrl(canvas: HTMLCanvasElement, quality = 0.85): Promise<string> {
+  return new Promise((resolve) => {
+    canvas.toBlob((blob) => resolve(blob ? URL.createObjectURL(blob) : ""), "image/webp", quality);
+  });
+}
+
+/** Snapshot of the live canvas, downscaled first and encoded via the async `toBlob` API rather than
+ * the synchronous `toDataURL` — on a throttled/weaker machine, encoding the full canvas resolution
+ * synchronously measured as a 600ms+ main-thread stall right at a tour-stop scroll boundary (every
+ * time `Capture` re-arms, not just once like the original hero-only version). `toBlob`'s encode runs
+ * off the main thread in Chromium; downscaling first also cuts the pixel count it has to encode. The
+ * pixel data itself is still read synchronously at the moment this is called (same timing guarantee
+ * `toDataURL` gave), so callers that need to flip state right after calling this (e.g. restoring jet
+ * visibility) can still do so immediately without waiting on the returned promise.
+ */
+export function captureCanvas(source: HTMLCanvasElement, scale = 0.6, quality = 0.9): Promise<string> {
+  if (scale >= 1) return canvasToObjectUrl(source, quality);
+  const small = document.createElement("canvas");
+  small.width = Math.round(source.width * scale);
+  small.height = Math.round(source.height * scale);
+  small.getContext("2d")!.drawImage(source, 0, 0, small.width, small.height);
+  return canvasToObjectUrl(small, quality);
 }

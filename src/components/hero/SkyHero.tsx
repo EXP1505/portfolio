@@ -11,7 +11,7 @@ import {
   type PerspectiveCamera,
 } from "three";
 import { Afterburners } from "./sky/Afterburners";
-import { backdrop, backdropPaused, blurStill, captureFlags, notifyBackdrop } from "./sky/backdrop";
+import { backdrop, backdropPaused, blurStill, captureCanvas, captureFlags, notifyBackdrop } from "./sky/backdrop";
 import { AMBIENT_FILL, CAMERA, FLIGHT, GOLDEN, TOUR_DAMP, TOUR_SETTLE_EPSILON, TOUR_STOPS } from "./sky/config";
 import { reveal, stage } from "./sky/reveal";
 import { PostFX } from "./sky/PostFX";
@@ -229,6 +229,12 @@ function Capture() {
   const wasLive = useRef(true);
 
   const reset = useCallback(() => {
+    // Object URLs (captureCanvas/blurStill return those now, not base64 data URLs) need explicit
+    // cleanup — there are many more capture cycles per visit now (one per tour-stop boundary) than
+    // the original one-shot hero capture, so leaving these unrevoked would leak real memory over a
+    // full scroll-through.
+    if (backdrop.sharp) URL.revokeObjectURL(backdrop.sharp);
+    if (backdrop.blurred) URL.revokeObjectURL(backdrop.blurred);
     backdrop.sharp = null;
     backdrop.blurred = null;
     step.current = 0;
@@ -252,21 +258,30 @@ function Capture() {
     if (step.current === 0) {
       if (backdrop.sharp || isLive) return;
       if (!get().scene.environment) return;
-      backdrop.sharp = gl.domElement.toDataURL("image/webp", 0.9);
+      // Downscaled + async (toBlob, not toDataURL) — the synchronous full-resolution encode this
+      // used to do measured as a 600ms+ main-thread stall under CPU throttling, right at a
+      // tour-stop scroll boundary. The pixel data is still grabbed synchronously at this call (so
+      // `hideJet` below is safe to flip immediately); only the encode is deferred off-thread.
+      captureCanvas(gl.domElement).then((url) => {
+        backdrop.sharp = url;
+        notifyBackdrop();
+      });
       captureFlags.hideJet = true; // Flight applies this before next frame's render
       step.current = 1;
       return;
     }
     // This frame rendered with the jet hidden (Flight set visible=false before PostFX drew it).
-    const skyOnly = gl.domElement.toDataURL("image/webp", 0.9);
-    captureFlags.hideJet = false; // restore for the live scene
     busy.current = true;
     step.current = 2;
-    blurStill(skyOnly).then((blurred) => {
-      backdrop.blurred = blurred;
-      busy.current = false;
-      notifyBackdrop();
-    });
+    const skyOnly = captureCanvas(gl.domElement);
+    captureFlags.hideJet = false; // restore for the live scene — safe immediately, see note above
+    skyOnly
+      .then((url) => blurStill(url))
+      .then((blurred) => {
+        backdrop.blurred = blurred;
+        busy.current = false;
+        notifyBackdrop();
+      });
   }, 2);
 
   return null;
